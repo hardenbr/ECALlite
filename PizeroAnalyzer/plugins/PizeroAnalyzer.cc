@@ -32,9 +32,9 @@
 #include "TH2F.h"
 #include "TH1F.h"
 #include "TTree.h"
-// #include "TMath.h"
-// #include "TVector3.h" 
-// #include "TLorentzVector.h" 
+#include "TMath.h"
+#include "TVector3.h" 
+#include "TLorentzVector.h" 
 
 #include "DataFormats/CaloRecHit/interface/CaloCluster.h"
 #include "DataFormats/CaloRecHit/interface/CaloClusterFwd.h"
@@ -88,6 +88,7 @@ private:
   float phiG2[MAX_PIZ];
 
   TTree* pizTree_;
+  TTree* eventTree_;
 
   edm::InputTag tag_barClusters_, tag_endClusters_;
 
@@ -97,6 +98,8 @@ private:
   TFile * outputFile_;
   std::string outputFileName_;
   std::string pizTreeName_;
+
+  float run, lumi, event;
 
   int debug_;
   bool doEta_, doEnd_, isMC_;
@@ -145,7 +148,12 @@ void PizeroAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
   std::vector<reco::CaloCluster>::const_iterator candIter1 = clusters.begin();
   std::vector<reco::CaloCluster>::const_iterator candIter2 = clusters.begin();
 
-  for(; candIter1 != clusters.end(); ++candIter2) {
+
+  run   = iEvent.id().run();
+  lumi  = iEvent.id().luminosityBlock();
+  event = iEvent.id().event();
+
+  for(; candIter1 != clusters.end(); ++candIter1) {
     for(; candIter2 != clusters.end(); ++candIter2) {
       if (candIter1 == candIter2) continue;
 	 
@@ -163,20 +171,21 @@ void PizeroAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
       float theta2     = 2.*atan(exp(-etaG2_temp));
       float ptG2_temp  = eG2_temp*sin(theta2);
 
-      math::PtEtaPhiELorentzVector g1, g2;
-
-      g1.SetPt(ptG1_temp); 
-      g1.SetEta(etaG1_temp);
-      g1.SetPhi(phiG1_temp);
-      //      g1.SetM(0);
-
-      g2.SetPt(ptG2_temp); 
-      g2.SetEta(etaG2_temp);
-      g2.SetPhi(phiG2_temp);
-      //g2.SetM(0);
+      TLorentzVector g1, g2;
+      g1.SetPtEtaPhiM(ptG1_temp, etaG1_temp, phiG1_temp, 0);
+      g2.SetPtEtaPhiM(ptG2_temp, etaG2_temp, phiG2_temp, 0);
 
 
-      math::PtEtaPhiELorentzVector pi0 = g1 + g2;
+      if(debug_ > 1) std::cout << "e1: "<< eG1_temp << " e2: " << eG2_temp << std::endl;
+
+      if(debug_ > 1) std::cout << "pt1: "<< ptG1_temp << 
+		       " pt2: " << ptG2_temp << " etaG1 " << etaG1_temp << " etaG2 " << etaG2_temp 
+			       << " phiG1 " << phiG1_temp << " phi G2 " << phiG2_temp << std::endl;
+
+
+      TLorentzVector pi0 = g1 + g2;
+
+      if(debug_ > 1) std::cout << "mass: " << pi0.M() << std::endl;
 
       // apply a mass window cut
       if (pi0.M() > maxMass || pi0.M() < minMass) continue;
@@ -184,6 +193,7 @@ void PizeroAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
       if(debug_ > 1) std::cout << "pt1: "<< ptG1_temp << 
 		       " pt2: " << ptG2_temp << " ptPi0 " << pi0.Pt()
 			      << " mPi0 " << pi0.M() << std::endl;
+
 
       // kinematics
       mPi0[nPi0]   = pi0.M();
@@ -214,50 +224,63 @@ void PizeroAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
     }
   }
 
-  pizTree_->Fill();
+  if(nPi0 > 0) {
+    if(debug_ > 1) std::cout << " Filling Tree " << nPi0 << std::endl;
+    pizTree_->Fill();
+  }
+  else {
+    if(debug_ > 1) std::cout << "Not Filing Tree nPi0: " << nPi0 << std::endl;
+  }
 }
 
 void PizeroAnalyzer::beginJob()
 {
   outputFile_ = new TFile(outputFileName_.c_str(), "RECREATE");
   pizTree_    = new TTree(pizTreeName_.c_str(), "pizero tree");
+  eventTree_    = new TTree("eventInfo", "event info tree");
 
-  // pizTree_->Branch("run", &run, "run/I");
-  // pizTree_->Branch("lumi", &lumi, "lumi/I");
-  // pizTree_->Branch("event", &event, "event/I");
+  eventTree_->Branch("run", &run, "run/I");
+  eventTree_->Branch("lumi", &lumi, "lumi/I");
+  eventTree_->Branch("event", &event, "event/I");
+  eventTree_->Branch("nPi0", &nPi0, "nPi0/I");
+  // index 
+  pizTree_->Branch("run", &run, "run/I");
+  pizTree_->Branch("lumi", &lumi, "lumi/I");
+  pizTree_->Branch("event", &event, "event/I");
 
-  // index
-  pizTree_->Branch("nPi0", &nPi0, "nPi0");
+  pizTree_->Branch("nPi0", &nPi0, "nPi0/I");
 
   // kinematics
-  pizTree_->Branch("mPi0", &mPi0, "mPi0[nPi0]");
-  pizTree_->Branch("ptPi0",&ptPi0, "ptPi0[nPi0]");
-  pizTree_->Branch("ptG1", &ptG1, "ptG1[nPi0]");
-  pizTree_->Branch("ptG2", &ptG2, "ptG2[nPi0]");
-  pizTree_->Branch("eG1",  &eG1, "eG1[nPi0]");
-  pizTree_->Branch("eG2",  &eG2, "eG2[nPi0]");
+  pizTree_->Branch("mPi0", &mPi0, "mPi0[nPi0]/F");
+  pizTree_->Branch("ptPi0",&ptPi0, "ptPi0[nPi0]/F");
+  pizTree_->Branch("ptG1", &ptG1, "ptG1[nPi0]/F");
+  pizTree_->Branch("ptG2", &ptG2, "ptG2[nPi0]/F");
+  pizTree_->Branch("eG1",  &eG1, "eG1[nPi0]/F");
+  pizTree_->Branch("eG2",  &eG2, "eG2[nPi0]/F");
 
   // position
-  pizTree_->Branch("xG1", &xG1, "xG1[nPi0]");
-  pizTree_->Branch("xG2", &xG2, "xG2[nPi0]");
-  pizTree_->Branch("yG1", &yG1, "yG1[nPi0]");
-  pizTree_->Branch("yG2", &yG2, "yG2[nPi0]");
-  pizTree_->Branch("zG1", &zG1, "zG1[nPi0]");
-  pizTree_->Branch("zG2", &zG2, "zG2[nPi0]");
+  pizTree_->Branch("xG1", &xG1, "xG1[nPi0]/F");
+  pizTree_->Branch("xG2", &xG2, "xG2[nPi0]/F");
+  pizTree_->Branch("yG1", &yG1, "yG1[nPi0]/F");
+  pizTree_->Branch("yG2", &yG2, "yG2[nPi0]/F");
+  pizTree_->Branch("zG1", &zG1, "zG1[nPi0]/F");
+  pizTree_->Branch("zG2", &zG2, "zG2[nPi0]/F");
 
   // eta phi position
-  pizTree_->Branch("etaPi0", &etaPi0, "etaPi0[nPi0]");
-  pizTree_->Branch("phiPi0", &etaPi0, "etaPi0[nPi0]");
-  pizTree_->Branch("etaG1", &etaG1, "etaG1[nPi0]");
-  pizTree_->Branch("phiG1", &etaG1, "etaG1[nPi0]");
-  pizTree_->Branch("etaG2", &etaG2, "etaG2[nPi0]");
-  pizTree_->Branch("phiG2", &etaG2, "etaG2[nPi0]");
+  pizTree_->Branch("etaPi0", &etaPi0, "etaPi0[nPi0]/F");
+  pizTree_->Branch("phiPi0", &etaPi0, "phiPi0[nPi0]/F");
+  pizTree_->Branch("etaG1", &etaG1, "etaG1[nPi0]/F");
+  pizTree_->Branch("phiG1", &etaG1, "phiG1[nPi0]/F");
+  pizTree_->Branch("etaG2", &etaG2, "etaG2[nPi0]/F");
+  pizTree_->Branch("phiG2", &etaG2, "phiG2[nPi0]/F");
 }
 
 
 void PizeroAnalyzer::endJob() 
 {
-  
+  pizTree_->Write();
+  eventTree_->Write();
+  outputFile_->Close();
 }
 
 // ------------ method fills 'descriptions' with the allowed parameters for the module  ------------
