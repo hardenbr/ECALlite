@@ -224,6 +224,9 @@ void PizeroAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
     }
   }
 
+
+  eventTree_->Fill();
+
   if(nPi0 > 0) {
     if(debug_ > 1) std::cout << " Filling Tree " << nPi0 << std::endl;
     pizTree_->Fill();
