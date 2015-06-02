@@ -103,6 +103,10 @@ private:
 
   int debug_;
   bool doEta_, doEnd_, isMC_;
+   // debug statement strings
+  std::string particle;
+  std::string detector;
+
 };
 
 PizeroAnalyzer::PizeroAnalyzer(const edm::ParameterSet& iConfig)
@@ -119,12 +123,11 @@ PizeroAnalyzer::PizeroAnalyzer(const edm::ParameterSet& iConfig)
    // barrel and endcap cluster tags 
    tag_barClusters_ = iConfig.getUntrackedParameter<edm::InputTag>("barrelClusters");
    tag_endClusters_ = iConfig.getUntrackedParameter<edm::InputTag>("endClusters");   
+   particle = doEta_ ? " eta " : " pi0 ";
+   detector = doEnd_ ? " EE " : " EB ";
 }
 
-PizeroAnalyzer::~PizeroAnalyzer()
-{
- 
-}
+PizeroAnalyzer::~PizeroAnalyzer(){ }
 
 //
 // member functions
@@ -134,25 +137,27 @@ PizeroAnalyzer::~PizeroAnalyzer()
 void PizeroAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 {
   using namespace edm;
-  fillHandles(iEvent);
-
-  reco::CaloClusterCollection clusters = *(barClusters.product());
-  if(doEnd_) clusters = *(endClusters.product());
-
-  const float minMass = doEta_ ? 0.20 : 0.05;
-  const float maxMass = doEta_ ? 0.50 : 0.15;      
 
   nPi0	= 0;
   isBar = doEnd_ ? 0 : 1;
+  
+  if(debug_ > 1) std::cout << particle << detector << " Pizero Analyzer -- new event fill handles " << std::endl;
+  fillHandles(iEvent);
+  if(debug_ > 1) std::cout << particle << detector << " Pizero Analyzer -- getting barrel cluster " << std::endl;
+  
+  reco::CaloClusterCollection clusters = doEnd_ ? *(endClusters.product()) : *(barClusters.product());
+
+  const float minMass = doEta_ ? 0.30 : 0.05;
+  const float maxMass = doEta_ ? 0.80 : 0.17;      
 
   std::vector<reco::CaloCluster>::const_iterator candIter1 = clusters.begin();
   std::vector<reco::CaloCluster>::const_iterator candIter2 = clusters.begin();
-
 
   run   = iEvent.id().run();
   lumi  = iEvent.id().luminosityBlock();
   event = iEvent.id().event();
 
+  if(debug_ > 1) std::cout << particle << detector << " Pizero Analyzer -- begin loop " << std::endl;
   for(; candIter1 != clusters.end(); ++candIter1) {
     for(; candIter2 != clusters.end(); ++candIter2) {
       if (candIter1 == candIter2) continue;
@@ -176,24 +181,23 @@ void PizeroAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
       g2.SetPtEtaPhiM(ptG2_temp, etaG2_temp, phiG2_temp, 0);
 
 
-      if(debug_ > 1) std::cout << "e1: "<< eG1_temp << " e2: " << eG2_temp << std::endl;
+      if(debug_ > 1) std::cout << particle << detector << " e1: "<< eG1_temp << " e2: " << eG2_temp << std::endl;
 
-      if(debug_ > 1) std::cout << "pt1: "<< ptG1_temp << 
+      if(debug_ > 1) std::cout << particle << detector << " pt1: "<< ptG1_temp << 
 		       " pt2: " << ptG2_temp << " etaG1 " << etaG1_temp << " etaG2 " << etaG2_temp 
 			       << " phiG1 " << phiG1_temp << " phi G2 " << phiG2_temp << std::endl;
 
 
       TLorentzVector pi0 = g1 + g2;
 
-      if(debug_ > 1) std::cout << "mass: " << pi0.M() << std::endl;
+      if(debug_ > 1) std::cout << particle << detector << " mass: " << pi0.M() << std::endl;
 
       // apply a mass window cut
       if (pi0.M() > maxMass || pi0.M() < minMass) continue;
 
-      if(debug_ > 1) std::cout << "pt1: "<< ptG1_temp << 
+      if(debug_ > 1) std::cout << particle << detector << " pt1: "<< ptG1_temp << 
 		       " pt2: " << ptG2_temp << " ptPi0 " << pi0.Pt()
 			      << " mPi0 " << pi0.M() << std::endl;
-
 
       // kinematics
       mPi0[nPi0]   = pi0.M();
@@ -223,25 +227,27 @@ void PizeroAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
       nPi0++;	 	 
     }
   }
-
-
+  if(debug_ > 1) std::cout << particle << detector << " Pizero Analyzer -- event tree filling " << std::endl;
   eventTree_->Fill();
 
   if(nPi0 > 0) {
-    if(debug_ > 1) std::cout << " Filling Tree " << nPi0 << std::endl;
+    if(debug_ > 1) std::cout << particle << detector << "Filling Tree " << nPi0 << std::endl;
     pizTree_->Fill();
   }
   else {
-    if(debug_ > 1) std::cout << "Not Filing Tree nPi0: " << nPi0 << std::endl;
+    if(debug_ > 1) std::cout << particle << detector << "Not Filing Tree nPi0 " << std::endl;
   }
 }
 
 void PizeroAnalyzer::beginJob()
 {
+
+  if(debug_ > 1) std::cout << particle << detector << " Pizero Analyzer -- begin job " << std::endl;
   outputFile_ = new TFile(outputFileName_.c_str(), "RECREATE");
   pizTree_    = new TTree(pizTreeName_.c_str(), "pizero tree");
   eventTree_    = new TTree("eventInfo", "event info tree");
 
+  if(debug_ > 1) std::cout << particle << detector << " Pizero Analyzer -- setting branches " << std::endl;
   eventTree_->Branch("run", &run, "run/I");
   eventTree_->Branch("lumi", &lumi, "lumi/I");
   eventTree_->Branch("event", &event, "event/I");
@@ -250,7 +256,6 @@ void PizeroAnalyzer::beginJob()
   pizTree_->Branch("run", &run, "run/I");
   pizTree_->Branch("lumi", &lumi, "lumi/I");
   pizTree_->Branch("event", &event, "event/I");
-
   pizTree_->Branch("nPi0", &nPi0, "nPi0/I");
 
   // kinematics
@@ -281,6 +286,8 @@ void PizeroAnalyzer::beginJob()
 
 void PizeroAnalyzer::endJob() 
 {
+  if(debug_ > 1) std::cout << particle << detector << " Pizero Analyzer -- end job" << std::endl;
+  outputFile_->cd();
   pizTree_->Write();
   eventTree_->Write();
   outputFile_->Close();
@@ -297,8 +304,8 @@ void PizeroAnalyzer::fillDescriptions(edm::ConfigurationDescriptions& descriptio
 
 
 void PizeroAnalyzer::fillHandles(const edm::Event & iEvent ) {
-  if(!doEnd_)iEvent.getByLabel(tag_barClusters_, barClusters); 
-  if(doEnd_) iEvent.getByLabel(tag_endClusters_, endClusters);
+  if(!doEnd_) iEvent.getByLabel(tag_barClusters_, barClusters); 
+  if(doEnd_)  iEvent.getByLabel(tag_endClusters_, endClusters);
 }
 
 //define this as a plug-in
